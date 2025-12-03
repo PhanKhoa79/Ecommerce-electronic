@@ -11,11 +11,14 @@ import { NewsSection } from "@/components/home/NewsSection"
 import { getProducts } from "@/lib/api"
 
 export default async function HomePage() {
-  const laptopProducts = await getProducts({ category: "Laptop Gaming" })
-  const pcProducts = await getProducts({ category: "PC Gaming" })
-  const mouseProducts = await getProducts({ category: "Chuột Gaming" })
-  const keyboardProducts = await getProducts({ category: "Bàn phím" })
-  const monitorProducts = await getProducts({ category: "Màn hình" })
+  // Fetch products with error handling
+  const [laptopProducts, pcProducts, mouseProducts, keyboardProducts, monitorProducts] = await Promise.all([
+    getProducts({ category: "Laptop Gaming" }).catch(() => []),
+    getProducts({ category: "PC Gaming" }).catch(() => []),
+    getProducts({ category: "Chuột Gaming" }).catch(() => []),
+    getProducts({ category: "Bàn phím" }).catch(() => []),
+    getProducts({ category: "Màn hình" }).catch(() => []),
+  ])
 
   return (
     <>
@@ -41,21 +44,24 @@ export default async function HomePage() {
 
         {/* Category Grid */}
         <section className="py-8">
-          <Container className="bg-white rounded-md p-4">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Danh mục sản phẩm</h2>
-            <CategoryGrid />
+          <Container>
+            <div className="bg-white rounded-md p-4">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Danh mục sản phẩm</h2>
+              <CategoryGrid />
+            </div>
           </Container>
         </section>
 
         {/* Product Sections */}
-        <Container>
-          <div className="space-y-12 py-8">
-            <ProductSection
-              title="PC Gaming Bán Chạy"
-              products={pcProducts}
-              badges={["Tặng màn hình"]}
-              filterTabs={["Intel", "AMD", "Tất cả"]}
-            />
+        <section className="py-8">
+          <Container>
+            <div className="space-y-12">
+              <ProductSection
+                title="PC Gaming Bán Chạy"
+                products={pcProducts}
+                badges={["Tặng màn hình"]}
+                filterTabs={["Intel", "AMD", "Tất cả"]}
+              />
 
             <ProductSection
               title="Laptop Gaming Bán Chạy"
@@ -84,13 +90,14 @@ export default async function HomePage() {
               filterTabs={["ASUS", "LG", "Samsung", "MSI", "Acer"]}
             />
 
-            <ProductSection
-              title="Gaming Gear Hot"
-              products={[...mouseProducts, ...keyboardProducts]}
-              filterTabs={["Chuột", "Bàn phím", "Tai nghe"]}
-            />
-          </div>
-        </Container>
+              <ProductSection
+                title="Gaming Gear Hot"
+                products={[...mouseProducts, ...keyboardProducts]}
+                filterTabs={["Chuột", "Bàn phím", "Tai nghe"]}
+              />
+            </div>
+          </Container>
+        </section>
 
         {/* Promotion Section */}
         <section className="py-8 bg-white rounded-md p-4">

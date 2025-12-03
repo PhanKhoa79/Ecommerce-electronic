@@ -1,49 +1,33 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db/connection';
-import { RowDataPacket } from 'mysql2';
-
-interface NewsRow extends RowDataPacket {
-  id: string;
-  slug: string;
-  title: string;
-  excerpt: string;
-  content: string | null;
-  thumbnail: string;
-  published_at: Date;
-  category: string;
-  author: string;
-}
+import connectDB from '@/lib/db/mongodb';
+import { News } from '@/lib/db/models';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    await connectDB();
+
     const { slug } = await params;
 
-    const [news] = await pool.query<NewsRow[]>(
-      'SELECT * FROM news WHERE slug = ? LIMIT 1',
-      [slug]
-    );
+    const article = await News.findOne({ slug }).lean();
 
-    if (news.length === 0) {
+    if (!article) {
       return NextResponse.json(
         { error: 'News article not found' },
         { status: 404 }
       );
     }
 
-    const article = news[0];
-
     return NextResponse.json({
-      id: article.id,
+      id: article._id.toString(),
       slug: article.slug,
       title: article.title,
       excerpt: article.excerpt,
       content: article.content,
-      thumbnail: article.thumbnail,
-      publishedAt: article.published_at,
-      category: article.category,
+      image: article.image,
+      publishedAt: article.publishedAt,
       author: article.author,
     });
   } catch (error: any) {

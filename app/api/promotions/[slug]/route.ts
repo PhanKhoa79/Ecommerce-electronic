@@ -1,63 +1,36 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db/connection';
-import { RowDataPacket } from 'mysql2';
-
-interface PromotionRow extends RowDataPacket {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  image: string;
-  link: string;
-  bg_color: string;
-  start_date: Date;
-  end_date: Date;
-  discount: string;
-  featured: boolean;
-}
-
-interface PromotionTermRow extends RowDataPacket {
-  term_text: string;
-}
+import connectDB from '@/lib/db/mongodb';
+import { Promotion } from '@/lib/db/models';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    await connectDB();
+
     const { slug } = await params;
 
-    const [promotions] = await pool.query<PromotionRow[]>(
-      'SELECT * FROM promotions WHERE slug = ? LIMIT 1',
-      [slug]
-    );
+    const promo = await Promotion.findOne({ slug }).lean();
 
-    if (promotions.length === 0) {
+    if (!promo) {
       return NextResponse.json(
         { error: 'Promotion not found' },
         { status: 404 }
       );
     }
 
-    const promo = promotions[0];
-
-    const [terms] = await pool.query<PromotionTermRow[]>(
-      'SELECT term_text FROM promotion_terms WHERE promotion_id = ? ORDER BY display_order',
-      [promo.id]
-    );
-
     return NextResponse.json({
-      id: promo.id,
+      id: promo._id.toString(),
       slug: promo.slug,
       title: promo.title,
       description: promo.description,
       image: promo.image,
-      link: promo.link,
-      bgColor: promo.bg_color,
-      startDate: promo.start_date,
-      endDate: promo.end_date,
-      discount: promo.discount,
-      terms: terms.map((t) => t.term_text),
+      discountPercent: promo.discountPercent,
+      discountText: promo.discountText,
+      startDate: promo.startDate,
+      endDate: promo.endDate,
+      terms: promo.terms || [],
       featured: promo.featured,
     });
   } catch (error: any) {

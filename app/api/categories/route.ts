@@ -1,21 +1,23 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db/connection';
-import { RowDataPacket } from 'mysql2';
-
-interface CategoryRow extends RowDataPacket {
-  id: string;
-  name: string;
-  slug: string;
-  image: string;
-}
+import connectDB from '@/lib/db/mongodb';
+import { Category } from '@/lib/db/models';
 
 export async function GET() {
   try {
-    const [categories] = await pool.query<CategoryRow[]>(
-      'SELECT id, name, slug, image FROM categories ORDER BY name'
-    );
+    await connectDB();
 
-    return NextResponse.json(categories);
+    const categories = await Category.find({})
+      .sort({ name: 1 })
+      .lean();
+
+    const categoriesData = categories.map((cat: any) => ({
+      id: cat._id.toString(),
+      name: cat.name,
+      slug: cat.slug,
+      image: cat.image,
+    }));
+
+    return NextResponse.json(categoriesData);
   } catch (error: any) {
     console.error('Error fetching categories:', error);
     return NextResponse.json(

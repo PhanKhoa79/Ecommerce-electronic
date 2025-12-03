@@ -1,43 +1,30 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db/connection';
-import { RowDataPacket } from 'mysql2';
-
-interface NewsRow extends RowDataPacket {
-  id: string;
-  slug: string;
-  title: string;
-  excerpt: string;
-  content: string | null;
-  thumbnail: string;
-  published_at: Date;
-  category: string;
-  author: string;
-}
+import connectDB from '@/lib/db/mongodb';
+import { News } from '@/lib/db/models';
 
 export async function GET(request: Request) {
   try {
+    await connectDB();
+
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get('limit');
 
-    let query = 'SELECT * FROM news ORDER BY published_at DESC';
-    const params: any[] = [];
+    let newsQuery = News.find({}).sort({ publishedAt: -1 });
 
     if (limit) {
-      query += ' LIMIT ?';
-      params.push(parseInt(limit));
+      newsQuery = newsQuery.limit(parseInt(limit));
     }
 
-    const [news] = await pool.query<NewsRow[]>(query, params);
+    const news = await newsQuery.lean();
 
-    const newsArticles = news.map((article) => ({
-      id: article.id,
+    const newsArticles = news.map((article: any) => ({
+      id: article._id.toString(),
       slug: article.slug,
       title: article.title,
       excerpt: article.excerpt,
       content: article.content,
-      thumbnail: article.thumbnail,
-      publishedAt: article.published_at,
-      category: article.category,
+      image: article.image,
+      publishedAt: article.publishedAt,
       author: article.author,
     }));
 

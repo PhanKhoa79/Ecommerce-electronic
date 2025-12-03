@@ -1,111 +1,50 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db/connection';
-import { RowDataPacket } from 'mysql2';
-
-interface ProductRow extends RowDataPacket {
-  id: string;
-  slug: string;
-  name: string;
-  price: number;
-  original_price: number;
-  rating: number;
-  review_count: number;
-  main_image: string;
-  description: string;
-  category: string;
-  brand: string;
-  badge: string | null;
-}
-
-interface ProductImageRow extends RowDataPacket {
-  image_url: string;
-}
-
-interface ProductSpecRow extends RowDataPacket {
-  spec_key: string;
-  spec_value: string;
-}
-
-interface ProductVariantRow extends RowDataPacket {
-  id: string;
-  name: string;
-  price_adjustment: number;
-}
-
-interface ProductHighlightRow extends RowDataPacket {
-  feature: string;
-}
+import connectDB from '@/lib/db/mongodb';
+import { Product } from '@/lib/db/models';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    await connectDB();
+
     const { slug } = await params;
 
     // Get product by slug
-    const [products] = await pool.query<ProductRow[]>(
-      'SELECT * FROM products WHERE slug = ? LIMIT 1',
-      [slug]
-    );
+    const product = await Product.findOne({ slug }).lean();
 
-    if (products.length === 0) {
+    if (!product) {
       return NextResponse.json(
         { error: 'Product not found' },
         { status: 404 }
       );
     }
 
-    const product = products[0];
-
-    // Get gallery images
-    const [images] = await pool.query<ProductImageRow[]>(
-      'SELECT image_url FROM product_images WHERE product_id = ? ORDER BY display_order',
-      [product.id]
-    );
-
-    // Get specs
-    const [specs] = await pool.query<ProductSpecRow[]>(
-      'SELECT spec_key, spec_value FROM product_specs WHERE product_id = ?',
-      [product.id]
-    );
-
-    // Get variants
-    const [variants] = await pool.query<ProductVariantRow[]>(
-      'SELECT id, name, price_adjustment FROM product_variants WHERE product_id = ?',
-      [product.id]
-    );
-
-    // Get highlight features
-    const [highlights] = await pool.query<ProductHighlightRow[]>(
-      'SELECT feature FROM product_highlights WHERE product_id = ? ORDER BY display_order',
-      [product.id]
-    );
-
-    // Transform specs array to object
-    const specsObject: Record<string, string> = {};
-    specs.forEach((spec) => {
-      specsObject[spec.spec_key] = spec.spec_value;
-    });
+    // Convert Map to plain object if needed
+    let specs = {};
+    if (product.specs) {
+      if (product.specs instanceof Map) {
+        specs = Object.fromEntries(product.specs);
+      } else if (typeof product.specs === 'object') {
+        specs = product.specs;
+      }
+    }
 
     const productWithDetails = {
-      id: product.id,
+      id: product._id.toString(),
       slug: product.slug,
       name: product.name,
       price: product.price,
-      originalPrice: product.original_price,
+      originalPrice: product.originalPrice,
       rating: product.rating,
-      reviewCount: product.review_count,
-      mainImage: product.main_image,
-      gallery: images.map((img) => img.image_url),
-      specs: specsObject,
-      variants: variants.map((v) => ({
-        id: v.id,
-        name: v.name,
-        priceAdjustment: v.price_adjustment,
-      })),
+      reviewCount: product.reviewCount,
+      mainImage: product.mainImage,
+      gallery: product.gallery || [],
+      specs,
+      variants: product.variants || [],
       description: product.description,
-      highlightFeatures: highlights.map((h) => h.feature),
+      highlightFeatures: product.highlightFeatures || [],
       category: product.category,
       brand: product.brand,
       badge: product.badge,

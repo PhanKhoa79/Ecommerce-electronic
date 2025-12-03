@@ -1,131 +1,71 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db/connection';
-import { RowDataPacket } from 'mysql2';
-
-interface ProductRow extends RowDataPacket {
-  id: string;
-  slug: string;
-  name: string;
-  price: number;
-  original_price: number;
-  rating: number;
-  review_count: number;
-  main_image: string;
-  description: string;
-  category: string;
-  brand: string;
-  badge: string | null;
-}
-
-interface ProductImageRow extends RowDataPacket {
-  image_url: string;
-}
-
-interface ProductSpecRow extends RowDataPacket {
-  spec_key: string;
-  spec_value: string;
-}
-
-interface ProductVariantRow extends RowDataPacket {
-  id: string;
-  name: string;
-  price_adjustment: number;
-}
-
-interface ProductHighlightRow extends RowDataPacket {
-  feature: string;
-}
+import connectDB from '@/lib/db/mongodb';
+import { Product } from '@/lib/db/models';
 
 export async function GET(request: Request) {
   try {
+    await connectDB();
+
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const limit = searchParams.get('limit');
     const search = searchParams.get('search');
 
-    let query = 'SELECT * FROM products WHERE 1=1';
-    const params: any[] = [];
+    // Build query
+    const query: any = {};
 
     // Filter by category
     if (category) {
-      query += ' AND category LIKE ?';
-      params.push(`%${category}%`);
+      query.category = { $regex: category, $options: 'i' };
     }
 
     // Search by name
     if (search) {
-      query += ' AND name LIKE ?';
-      params.push(`%${search}%`);
+      query.name = { $regex: search, $options: 'i' };
     }
 
-    // Order by rating and review count
-    query += ' ORDER BY rating DESC, review_count DESC';
+    // Execute query
+    let productsQuery = Product.find(query)
+      .sort({ rating: -1, reviewCount: -1 });
 
     // Limit results
     if (limit) {
-      query += ' LIMIT ?';
-      params.push(parseInt(limit));
+      productsQuery = productsQuery.limit(parseInt(limit));
     }
 
-    const [products] = await pool.query<ProductRow[]>(query, params);
+    const products = await productsQuery.lean();
 
-    // Get additional data for each product
-    const productsWithDetails = await Promise.all(
-      products.map(async (product) => {
-        // Get gallery images
-        const [images] = await pool.query<ProductImageRow[]>(
-          'SELECT image_url FROM product_images WHERE product_id = ? ORDER BY display_order',
-          [product.id]
-        );
+    // Transform MongoDB documents to API response format
+    const productsWithDetails = products.map((product: any) => {
+      // Convert Map to plain object if needed
+      let specs = {};
+      if (product.specs) {
+        if (product.specs instanceof Map) {
+          specs = Object.fromEntries(product.specs);
+        } else if (typeof product.specs === 'object') {
+          specs = product.specs;
+        }
+      }
 
-        // Get specs
-        const [specs] = await pool.query<ProductSpecRow[]>(
-          'SELECT spec_key, spec_value FROM product_specs WHERE product_id = ?',
-          [product.id]
-        );
-
-        // Get variants
-        const [variants] = await pool.query<ProductVariantRow[]>(
-          'SELECT id, name, price_adjustment FROM product_variants WHERE product_id = ?',
-          [product.id]
-        );
-
-        // Get highlight features
-        const [highlights] = await pool.query<ProductHighlightRow[]>(
-          'SELECT feature FROM product_highlights WHERE product_id = ? ORDER BY display_order',
-          [product.id]
-        );
-
-        // Transform specs array to object
-        const specsObject: Record<string, string> = {};
-        specs.forEach((spec) => {
-          specsObject[spec.spec_key] = spec.spec_value;
-        });
-
-        return {
-          id: product.id,
-          slug: product.slug,
-          name: product.name,
-          price: product.price,
-          originalPrice: product.original_price,
-          rating: product.rating,
-          reviewCount: product.review_count,
-          mainImage: product.main_image,
-          gallery: images.map((img) => img.image_url),
-          specs: specsObject,
-          variants: variants.map((v) => ({
-            id: v.id,
-            name: v.name,
-            priceAdjustment: v.price_adjustment,
-          })),
-          description: product.description,
-          highlightFeatures: highlights.map((h) => h.feature),
-          category: product.category,
-          brand: product.brand,
-          badge: product.badge,
-        };
-      })
-    );
+      return {
+        id: product._id.toString(),
+        slug: product.slug,
+        name: product.name,
+        price: product.price,
+        originalPrice: product.originalPrice,
+        rating: product.rating,
+        reviewCount: product.reviewCount,
+        mainImage: product.mainImage,
+        gallery: product.gallery || [],
+        specs,
+        variants: product.variants || [],
+        description: product.description,
+        highlightFeatures: product.highlightFeatures || [],
+        category: product.category,
+        brand: product.brand,
+        badge: product.badge,
+      };
+    });
 
     return NextResponse.json(productsWithDetails);
   } catch (error: any) {
